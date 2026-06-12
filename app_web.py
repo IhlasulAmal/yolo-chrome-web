@@ -47,7 +47,7 @@ if "log_history" not in st.session_state:
     st.session_state.log_history = []
 
 # -------------------------------------------------------------------------
-# OPSI A: UNGGAH VIDEO
+# OPSI A: UNGGAH VIDEO (VERSI OPTIMASI AGAR JALAN LANCAR DI CHROME)
 # -------------------------------------------------------------------------
 if menu_pilihan == "Unggah Video (.mp4)":
     uploaded_file = st.file_uploader("Pilih file video (.mp4)", type=["mp4"])
@@ -59,10 +59,21 @@ if menu_pilihan == "Unggah Video (.mp4)":
         video = cv2.VideoCapture(tfile.name)
         st.info("Sedang memproses video...")
         
+        frame_counter = 0  # Untuk hitung frame skipping
+        
         while video.isOpened():
             ret, frame = video.read()
             if not ret:
                 break
+                
+            frame_counter += 1
+            # OPTIMASI 1: Skip frame (Hanya proses frame genap agar video 2x lebih lancar)
+            if frame_counter % 2 != 0:
+                continue
+                
+            # OPTIMASI 2: Resize frame ke 640px (Standar input YOLO & sangat ringan untuk web)
+            # Ini rahasia agar streaming di Google Chrome tidak macet
+            frame = cv2.resize(frame, (640, 360)) 
                 
             # Jalankan Prediksi YOLO
             results = model.predict(frame, classes=VEHICLE_CLASSES, conf=0.25, verbose=False)
@@ -90,14 +101,16 @@ if menu_pilihan == "Unggah Video (.mp4)":
             df_count = pd.DataFrame(list(current_counts.items()), columns=["Jenis", "Jumlah Terdeteksi"])
             st_counter.dataframe(df_count, use_container_width=True, hide_index=True)
             
-            # Tampilkan Log (Batasi hanya 10 aktivitas terbaru agar web tidak lambat)
+            # Tampilkan Log (Batasi hanya 5 aktivitas terbaru agar web tetap responsif)
             if st.session_state.log_history:
-                df_log = pd.DataFrame(st.session_state.log_history[:10])
+                df_log = pd.DataFrame(st.session_state.log_history[:5])
                 st_log.dataframe(df_log, use_container_width=True, hide_index=True)
+                
+            # Jeda mikroskopis agar browser Chrome sempat bernapas mendownload gambar
+            time.sleep(0.01)
             
         video.release()
         st.success("Video selesai diproses!")
-
 # -------------------------------------------------------------------------
 # OPSI B: KAMERA LANGSUNG (LIVE CAMERA)
 # -------------------------------------------------------------------------
