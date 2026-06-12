@@ -47,7 +47,7 @@ if "log_history" not in st.session_state:
     st.session_state.log_history = []
 
 # -------------------------------------------------------------------------
-# OPSI A: UNGGAH VIDEO (VERSI INTERAKTIF: PLAY, STOP, TIMELINE SLIDER)
+# OPSI A: UNGGAH VIDEO (VERSI SUPER SMOOTH & ANTI-FLICKER)
 # -------------------------------------------------------------------------
 if menu_pilihan == "Unggah Video (.mp4)":
     uploaded_file = st.file_uploader("Pilih file video (.mp4)", type=["mp4"])
@@ -60,51 +60,40 @@ if menu_pilihan == "Unggah Video (.mp4)":
         # Ambil informasi total frame video untuk timeline
         cap_info = cv2.VideoCapture(tfile.name)
         total_frames = int(cap_info.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap_info.get(cv2.CAP_PROP_FPS)
         cap_info.release()
         
-        # Kontrol Interaktif Pemutar Video
+        # Kontrol Interaktif di Sidebar
         st.sidebar.markdown("---")
         st.sidebar.subheader("🎮 Kontrol Pemutar")
         
-        # Tombol Play / Pause
-        if "playing" not in st.session_state:
-            st.session_state.playing = False
+        # Menggunakan checkbox sebagai switch Play/Stop agar tidak memicu rerun massal
+        play_mode = st.sidebar.checkbox("▶️ Jalankan Video (Play)", value=False)
 
-        kol_btn1, kol_btn2 = st.sidebar.columns(2)
-        with kol_btn1:
-            if st.button("▶️ Play"):
-                st.session_state.playing = True
-        with kol_btn2:
-            if st.button("⏸️ Stop/Pause"):
-                st.session_state.playing = False
-
-        # Garis Waktu / Timeline Slider (Nilainya diikat ke session_state agar sinkron)
-        if "current_frame_idx" not in st.session_state:
-            st.session_state.current_frame_idx = 0
-
+        # Garis Waktu / Timeline Slider
         timeline = st.slider(
-            "🎞️ Garis Waktu Video (Frame)", 
+            "🎞️ Jalankan Manual / Geser Waktu (Gunakan saat Video STOP)", 
             min_value=0, 
             max_value=total_frames - 1, 
-            value=st.session_state.current_frame_idx,
-            key="timeline_slider"
+            value=0
         )
         
-        # Sinkronisasi posisi frame jika pengguna menggeser slider manual
-        st.session_state.current_frame_idx = timeline
-
-        # Mulai Buka Video untuk Proses Tampilan
+        # Mulai Buka Video
         video = cv2.VideoCapture(tfile.name)
         
-        # Jika tombol Play aktif, jalankan pemutaran video otomatis
-        if st.session_state.playing and st.session_state.current_frame_idx < total_frames - 1:
-            # Set posisi video ke frame saat ini
-            video.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame_idx)
-            ret, frame = video.read()
+        # KONDISI 1: JIKA TOMBOL PLAY AKTIF (Video berjalan mulus lewat internal loop)
+        if play_mode:
+            st.info("Video sedang berjalan... Hilangkan centang 'Jalankan Video' untuk Pause.")
             
-            if ret:
-                # Optimasi ukuran agar tidak lemot di Chrome
+            # Set posisi awal video berdasarkan titik terakhir slider
+            video.set(cv2.CAP_PROP_POS_FRAMES, timeline)
+            
+            # Kunci Rahasia: Perulangan internal 'while' TANPA st.rerun() agar tidak berkedip
+            while video.isOpened() and play_mode:
+                ret, frame = video.read()
+                if not ret:
+                    break
+                
+                # Optimasi ukuran frame (wajib agar streaming cloud lancar)
                 frame = cv2.resize(frame, (640, 360)) 
                 
                 # Prediksi YOLO
@@ -112,7 +101,7 @@ if menu_pilihan == "Unggah Video (.mp4)":
                 annotated_frame = results[0].plot()
                 annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
                 
-                # Tampilkan ke Web
+                # Tampilkan ke Web (Hanya komponen gambar ini yang diperbarui, komponen lain diam)
                 st_frame.image(annotated_frame, channels="RGB", use_container_width=True)
                 
                 # --- PROSES LOG DAN COUNTER ---
@@ -128,22 +117,20 @@ if menu_pilihan == "Unggah Video (.mp4)":
                         timestamp = time.strftime('%H:%M:%S')
                         st.session_state.log_history.insert(0, {"Waktu": timestamp, "Jenis Kendaraan": nama_kendaraan})
                 
-                # Update Statistik tabel kanan
+                # Update Statistik & Log tabel kanan secara berkala
                 df_count = pd.DataFrame(list(current_counts.items()), columns=["Jenis", "Jumlah Terdeteksi"])
                 st_counter.dataframe(df_count, use_container_width=True, hide_index=True)
                 
                 if st.session_state.log_history:
                     df_log = pd.DataFrame(st.session_state.log_history[:5])
                     st_log.dataframe(df_log, use_container_width=True, hide_index=True)
-
-                # Maju ke frame berikutnya lalu paksa Streamlit untuk refresh halaman
-                st.session_state.current_frame_idx += 2  # Lompat 2 frame agar video terasa lebih cepat & lancar
-                time.sleep(0.01)
-                st.rerun()
-        
-        # Jika dalam kondisi Stop / Pause (Menampilkan frame statis di titik slider berada)
+                
+                # Jeda tipis untuk menyamakan dengan kecepatan FPS asli video
+                time.sleep(0.03) 
+                
+        # KONDISI 2: JIKA VIDEO PAUSE / STOP (Menampilkan gambar statis sesuai geseran slider)
         else:
-            video.set(cv2.CAP_PROP_POS_FRAMES, st.session_state.current_frame_idx)
+            video.set(cv2.CAP_PROP_POS_FRAMES, timeline)
             ret, frame = video.read()
             if ret:
                 frame = cv2.resize(frame, (640, 360))
