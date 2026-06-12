@@ -34,7 +34,7 @@ def load_model(model_name):
     return YOLO(MODEL_MAP[model_name])
 
 model = load_model(pilihan_model)
-st.sidebar.success(# Menggunakan model: {MODEL_MAP[pilihan_model]}`)
+st.sidebar.success(f"Menggunakan model: {MODEL_MAP[pilihan_model]}")
 
 # Menu Metode Input
 menu_pilihan = st.sidebar.radio(
